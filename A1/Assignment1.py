@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import numpy as np
 import random
 import matplotlib.pyplot as plt
@@ -47,11 +49,10 @@ def EvaluateCLF(X: np.ndarray, W: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 def ComputeCost(X: np.ndarray, Y: np.ndarray, W: np.ndarray, b: np.ndarray, lmbda: float) -> float:
     P = EvaluateCLF(X, W, b)
-    lcross = -Y.T @ np.log(P)
-    # cost = np.sum(lcross) / X.shape[1] + lmbda * np.sum(W ** 2)
-    cost = np.mean(lcross) + lmbda * np.sum(W ** 2)
-    loss = log_loss(np.argmax(Y, axis=0).flatten(), P.T)
-    return loss
+    N = P.shape[1]
+    ce_loss = -np.sum(Y * np.log(P)) / N
+    cost = ce_loss + 2 * lmbda * np.sum(W)
+    return cost, ce_loss
 
 
 def ComputeAccuracy(X: np.ndarray, y: np.ndarray, W: np.ndarray, b: np.ndarray) -> float:
@@ -74,14 +75,14 @@ def ComputeGradsNum(X, Y, P, W, b, lamda, h=1e-6):
     for i in range(len(b)):
         b_try = np.array(b)
         b_try[i] += h
-        c2 = ComputeCost(X, Y, W, b_try, lamda)
+        c2, _ = ComputeCost(X, Y, W, b_try, lamda)
         grad_b[i] = (c2 - c) / h
 
     for i in range(W.shape[0]):
         for j in range(W.shape[1]):
             W_try = np.array(W)
             W_try[i, j] += h
-            c2 = ComputeCost(X, Y, W_try, b, lamda)
+            c2, _ = ComputeCost(X, Y, W_try, b, lamda)
             grad_W[i, j] = (c2 - c) / h
 
     return grad_W, grad_b
@@ -98,11 +99,11 @@ def ComputeGradsNumSlow(X, Y, P, W, b, lamda, h=1e-6):
     for i in range(len(b)):
         b_try = np.array(b)
         b_try[i] -= h
-        c1 = ComputeCost(X, Y, W, b_try, lamda)
+        c1, _ = ComputeCost(X, Y, W, b_try, lamda)
 
         b_try = np.array(b)
         b_try[i] += h
-        c2 = ComputeCost(X, Y, W, b_try, lamda)
+        c2, _ = ComputeCost(X, Y, W, b_try, lamda)
 
         grad_b[i] = (c2 - c1) / (2 * h)
 
@@ -110,11 +111,11 @@ def ComputeGradsNumSlow(X, Y, P, W, b, lamda, h=1e-6):
         for j in range(W.shape[1]):
             W_try = np.array(W)
             W_try[i, j] -= h
-            c1 = ComputeCost(X, Y, W_try, b, lamda)
+            c1, _ = ComputeCost(X, Y, W_try, b, lamda)
 
             W_try = np.array(W)
             W_try[i, j] += h
-            c2 = ComputeCost(X, Y, W_try, b, lamda)
+            c2, _ = ComputeCost(X, Y, W_try, b, lamda)
 
             grad_W[i, j] = (c2 - c1) / (2 * h)
 
@@ -166,31 +167,41 @@ def YieldMiniBatch(_X, _Y, _y, batchSize=100):
         yield i, X[start:start + batchSize].T, Y[start:start + batchSize].T, y[start:start + batchSize]
 
 
-def plot_cost_and_accuracy(costs, accuracies):
+def plot_cost_and_accuracy(history):
     fig, ax1 = plt.subplots()
 
     # plot the cost
     color = 'tab:red'
     ax1.set_xlabel('Epoch')
-    ax1.set_ylabel('Cost', color=color)
-    ax1.plot(range(1, len(costs)+1), costs, color=color)
+    ax1.set_ylabel('Cost / Loss', color=color)
+    ax1.plot(range(1, len(history["costs"])+1), history["costs"], color=color, label=f"""Cost (final: {history["costs"][-1]:.2f})""")
+    ax1.plot(range(1, len(history["val_costs"])+1), history["val_costs"], color="magenta", label=f"""Val Cost (final: {history["val_costs"][-1]:.2f})""")
+
+    ax1.plot(range(1, len(history["losses"])+1), history["losses"], color="yellow", label=f"""Loss (final: {history["losses"][-1]:.2f})""")
+    ax1.plot(range(1, len(history["val_losses"])+1), history["val_losses"], color="orange", label=f"""Val Loss (final: {history["val_losses"][-1]:.2f})""")
     ax1.tick_params(axis='y', labelcolor=color)
+    ax1.set_yscale("log")
+    #ax1.set_yscale('symlog', linthresh=0.01)
 
     # plot the accuracy
     ax2 = ax1.twinx()
     color = 'tab:blue'
     ax2.set_ylabel('Accuracy', color=color)
-    ax2.plot(range(1, len(accuracies)+1), accuracies, color=color)
+    ax2.plot(range(1, len(history["accuracies"])+1), history["accuracies"], color=color, label=f"""Accuracy (final: {history["val_accuracies"][-1]:.2f})""")
+    ax2.plot(range(1, len(history["val_accuracies"])+1), history["val_accuracies"], color="cyan", label=f"""Val Accuracy (final: {history["val_accuracies"][-1]:.2f})""")
     ax2.tick_params(axis='y', labelcolor=color)
 
     # set the limits for y-axis scales
-    ax1.set_ylim([0, max(costs) + 0.5])
-    ax2.set_ylim([min(accuracies) - 0.02, 1])
+    #ax1.set_ylim([0.1, max(history["losses"]) + 0.5])
+    ax2.set_ylim([min(history["accuracies"]) - 0.02, 1])
 
-    # add a title and display the plot
-    plt.title('Cost and Accuracy Plot')
+    # add legend
+    lines, labels = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax2.legend(lines + lines2, labels + labels2)
+
+    plt.title(f'Cost and Accuracy Plot (l2={params["l2"]}) (eta={params["lr"]})')
     plt.show()
-
 
 
 D = 3072  # dimensionality
@@ -222,24 +233,22 @@ Weights = np.random.normal(0, 0.01, (K, D))
 bias = np.random.normal(0, 0.01, (K, 1))
 
 params = {
-    "epochs": 50,
+    "epochs": 40,
     "batchSize": 100,
-    "l2": 0,
-    "lr": 0.001,
+    "l2": 1,
+    "lr": .001,
 }
 
 
 # X_batch, Y_batch, y_batch = getBatchDumb(X_train, Y_train, y_train, params["batchSize"])
 
-def TrainCLF(Weights, bias, params, X_train, Y_train, y_train):
+def TrainCLF(Weights, bias, params, X_train, Y_train, y_train, X_val, Y_val, y_val):
     epochs = params["epochs"]
-    batchSize = params["batchSize"]
-    batchesPerEpoch = np.ceil(X_train.shape[1] / batchSize).astype(int)
-    costs = []
-    accs = []
+    batchesPerEpoch = np.ceil(X_train.shape[1] / params["batchSize"]).astype(int)
+    history = defaultdict(list)
 
     for j in range(epochs):
-        for i, X_batch, Y_batch, y_batch in YieldMiniBatch(X_train, Y_train, y_train, batchSize):
+        for i, X_batch, Y_batch, y_batch in YieldMiniBatch(X_train, Y_train, y_train, params["batchSize"]):
             Probs = EvaluateCLF(X_batch, Weights, bias)
 
             grad_W, grad_b = ComputeGradients(X_batch, Y_batch, Probs, Weights, bias, params["l2"])
@@ -248,21 +257,51 @@ def TrainCLF(Weights, bias, params, X_train, Y_train, y_train):
             # assert np.allclose(grad_b, grad_b_num, atol=1e-4)
             # assert np.allclose(grad_W, grad_W_num, atol=1e-4)
 
-            Weights -= params["lr"] * grad_W / batchSize
-            bias -= params["lr"] * grad_b / batchSize
+            Weights -= params["lr"] * grad_W
+            bias -= params["lr"] * grad_b
 
-        cost = ComputeCost(X_train, Y_train, Weights, bias, params["l2"])
+        # Train data
+        cost, loss = ComputeCost(X_train, Y_train, Weights, bias, params["l2"])
         acc = ComputeAccuracy(X_train, y_train, Weights, bias)
-        costs.append(cost)
-        accs.append(acc)
+        history["costs"].append(cost)
+        history["losses"].append(loss)
+        history["accuracies"].append(acc)
 
-        print(f"""Epoch {j + 1}/{epochs}: Batch {i + 1}/{batchesPerEpoch}: Cost={cost} ; Acc={acc}""")
+        # Val data
+        cost_val, loss_val = ComputeCost(X_val, Y_val, Weights, bias, params["l2"])
+        acc_val = ComputeAccuracy(X_val, y_val, Weights, bias)
+        history["val_costs"].append(cost_val)
+        history["val_losses"].append(loss_val)
+        history["val_accuracies"].append(acc_val)
 
-    return Weights, bias, costs, accs
+        print(f"""Epoch {j + 1}/{epochs}: Batch {i + 1}/{batchesPerEpoch}: Cost={cost} ; Acc={acc} ; Val Cost={cost_val} ; Val Acc={acc_val}""")
+
+    return Weights, bias, history
 
 
-Weights, bias, costs, accs = TrainCLF(Weights, bias, params, X_train, Y_train, y_train)
+Weights, bias, history = TrainCLF(Weights, bias, params, X_train, Y_train, y_train, X_val, Y_val, y_val)
 
-plot_cost_and_accuracy(costs, accs)
+plot_cost_and_accuracy(history)
 
-print()
+# Test data
+acc_test = ComputeAccuracy(X_test, y_test, Weights, bias)
+
+
+def plot_weights(W):
+    fig, axs = plt.subplots(2, 5, figsize=(10, 4))
+
+    for i in range(len(W)):
+        im = np.reshape(W[i, :], (32, 32, 3))
+        im = (im - np.min(im)) / (np.max(im) - np.min(im))
+        im = np.transpose(im, (1, 0, 2))  # permute
+
+        axs[i // 5, i % 5].imshow(im)
+        axs[i // 5, i % 5].axis('off')
+        axs[i // 5, i % 5].set_title(f'Weight {i + 1}')
+
+    plt.show()
+
+plot_weights(Weights)
+
+
+print(f"Final test acc {acc_test}")
