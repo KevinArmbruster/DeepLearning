@@ -1,6 +1,17 @@
 import numpy as np
 
 
+def softmax(x):
+    """ Standard definition of the softmax function """
+    return np.exp(x) / np.sum(np.exp(x), axis=0)
+
+
+def LoadBatch(filename):
+    """ Copied from the dataset website """
+    import pickle
+    with open('cifar-10-python/' + filename, 'rb') as fo:
+        dict = pickle.load(fo, encoding='bytes')
+    return dict
 
 
 def ComputeGradsNum(X, Y, P, W, b, lamda, h):
