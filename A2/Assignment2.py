@@ -1,10 +1,8 @@
 from collections import defaultdict
-from typing import Tuple, Any
 
 import numpy as np
 import random
 import matplotlib.pyplot as plt
-from sklearn.metrics import log_loss
 import copy
 
 random.seed(400)
@@ -36,6 +34,28 @@ def load_batch(filename) -> (np.ndarray, np.ndarray, np.ndarray):
     return X, Y, y
 
 
+def load_all_batches():
+    X, Y, y = load_batch("data_batch_1")
+    for i in range(2,6):
+        X_, Y_, y_ = load_batch("data_batch_" + i.__str__())
+        X = np.concatenate((X, X_), axis=1)
+        Y = np.concatenate((Y, Y_), axis=1)
+        y = np.concatenate((y, y_))
+    return X, Y, y
+
+
+def train_test_split(X, Y, y, test_size):
+    X_train = X[:, test_size:]
+    X_test = X[:, :test_size]
+
+    Y_train = Y[:, test_size:]
+    Y_test = Y[:, :test_size]
+
+    y_train = y[test_size:]
+    y_test = y[:test_size]
+    return X_train, Y_train, y_train, X_test, Y_test, y_test
+
+
 def normalize(X: np.ndarray, mean: np.ndarray, std: np.ndarray):
     X -= mean
     X /= std
@@ -43,7 +63,6 @@ def normalize(X: np.ndarray, mean: np.ndarray, std: np.ndarray):
 
 
 def ForwardPass(X: np.ndarray, layers: list, cache=False) -> np.ndarray:
-
     s1 = layers[0]["W"] @ X + layers[0]["b"]
     h = relu(s1)
 
@@ -72,8 +91,8 @@ def ComputeCost(X: np.ndarray, Y: np.ndarray, layers: list, lmbda: float) -> tup
     pred = ForwardPass(X, layers)
     N = pred.shape[1]
     loss_cross = -np.sum(Y * np.log(pred)) / N
-    loss_cross222 = sum(-np.log((Y * pred).sum(axis=0))) / N
-    assert np.allclose(loss_cross222, loss_cross)
+    # loss_cross222 = sum(-np.log((Y * pred).sum(axis=0))) / N
+    # assert np.allclose(loss_cross222, loss_cross)
 
     loss_regularization = sum([lmbda * (layer["W"] ** 2).sum() for layer in layers])
     cost = loss_cross + loss_regularization
@@ -160,7 +179,6 @@ def ComputeGradsNumGit(X, Y, layers, lmbda, h=1e-5):
 
 
 def ComputeGradients(X: np.ndarray, Y: np.ndarray, layers: list, lmbda: float):
-
     error = layers[1]["activation"] - Y
 
     N = layers[1]["activation"].shape[1]
@@ -203,25 +221,31 @@ def plot_cost_and_accuracy(history):
     color = 'tab:red'
     ax1.set_xlabel('Epoch')
     ax1.set_ylabel('Cost / Loss', color=color)
-    ax1.plot(range(1, len(history["costs"])+1), history["costs"], color=color, label=f"""Cost (final: {history["costs"][-1]:.2f})""")
-    ax1.plot(range(1, len(history["val_costs"])+1), history["val_costs"], color="magenta", label=f"""Val Cost (final: {history["val_costs"][-1]:.2f})""")
+    ax1.plot(range(1, len(history["costs"]) + 1), history["costs"], color=color,
+             label=f"""Cost (final: {history["costs"][-1]:.2f})""")
+    ax1.plot(range(1, len(history["val_costs"]) + 1), history["val_costs"], color="magenta",
+             label=f"""Val Cost (final: {history["val_costs"][-1]:.2f})""")
 
-    ax1.plot(range(1, len(history["losses"])+1), history["losses"], color="yellow", label=f"""Loss (final: {history["losses"][-1]:.2f})""")
-    ax1.plot(range(1, len(history["val_losses"])+1), history["val_losses"], color="orange", label=f"""Val Loss (final: {history["val_losses"][-1]:.2f})""")
+    ax1.plot(range(1, len(history["losses"]) + 1), history["losses"], color="yellow",
+             label=f"""Loss (final: {history["losses"][-1]:.2f})""")
+    ax1.plot(range(1, len(history["val_losses"]) + 1), history["val_losses"], color="orange",
+             label=f"""Val Loss (final: {history["val_losses"][-1]:.2f})""")
     ax1.tick_params(axis='y', labelcolor=color)
     ax1.set_yscale("log")
-    #ax1.set_yscale('symlog', linthresh=0.01)
+    # ax1.set_yscale('symlog', linthresh=0.01)
 
     # plot the accuracy
     ax2 = ax1.twinx()
     color = 'tab:blue'
     ax2.set_ylabel('Accuracy', color=color)
-    ax2.plot(range(1, len(history["accuracies"])+1), history["accuracies"], color=color, label=f"""Accuracy (final: {history["accuracies"][-1]:.2f})""")
-    ax2.plot(range(1, len(history["val_accuracies"])+1), history["val_accuracies"], color="cyan", label=f"""Val Accuracy (final: {history["val_accuracies"][-1]:.2f})""")
+    ax2.plot(range(1, len(history["accuracies"]) + 1), history["accuracies"], color=color,
+             label=f"""Accuracy (final: {history["accuracies"][-1]:.2f})""")
+    ax2.plot(range(1, len(history["val_accuracies"]) + 1), history["val_accuracies"], color="cyan",
+             label=f"""Val Accuracy (final: {history["val_accuracies"][-1]:.2f})""")
     ax2.tick_params(axis='y', labelcolor=color)
 
     # set the limits for y-axis scales
-    #ax1.set_ylim([0.1, max(history["losses"]) + 0.5])
+    # ax1.set_ylim([0.1, max(history["losses"]) + 0.5])
     ax2.set_ylim([min(history["accuracies"]) - 0.02, 1])
 
     # add legend
@@ -229,7 +253,60 @@ def plot_cost_and_accuracy(history):
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax2.legend(lines + lines2, labels + labels2)
 
-    plt.title(f'Cost and Accuracy Plot (l2={hyper["l2"]}) (eta={hyper["lr"]})')
+    plt.title(f'Cost and Accuracy Plot (l2={hyper["l2"]})')
+    plt.show()
+
+
+def plot_cyclic_lr_and_cost_and_accuracy(history):
+    fig, ax1 = plt.subplots()
+
+    # plot the cost
+    color = 'tab:red'
+    ax1.set_xlabel('Update Steps')
+    ax1.set_ylabel('Cost / Loss', color=color)
+    ax1.plot(range(1, len(history["costs"]) + 1), history["costs"], color=color,
+             label=f"""Cost (final: {history["costs"][-1]:.2f})""")
+    ax1.plot(range(1, len(history["val_costs"]) + 1), history["val_costs"], color="magenta",
+             label=f"""Val Cost (final: {history["val_costs"][-1]:.2f})""")
+
+    ax1.plot(range(1, len(history["losses"]) + 1), history["losses"], color="yellow",
+             label=f"""Loss (final: {history["losses"][-1]:.2f})""")
+    ax1.plot(range(1, len(history["val_losses"]) + 1), history["val_losses"], color="orange",
+             label=f"""Val Loss (final: {history["val_losses"][-1]:.2f})""")
+    ax1.tick_params(axis='y', labelcolor=color)
+    ax1.set_yscale("log")
+    # ax1.set_yscale('symlog', linthresh=0.01)
+
+    # plot the accuracy
+    ax2 = ax1.twinx()
+    color = 'tab:blue'
+    ax2.set_ylabel('Accuracy', color=color)
+    ax2.plot(range(1, len(history["accuracies"]) + 1), history["accuracies"], color=color,
+             label=f"""Accuracy (final: {history["accuracies"][-1]:.2f})""")
+    ax2.plot(range(1, len(history["val_accuracies"]) + 1), history["val_accuracies"], color="cyan",
+             label=f"""Val Accuracy (final: {history["val_accuracies"][-1]:.2f})""")
+    ax2.tick_params(axis='y', labelcolor=color)
+
+    # plot the cyclic learning rate
+    ax3 = ax1.twinx()
+    color = 'gray'
+    # ax3.set_ylabel('Learning Rate', color=color)
+    ax3.plot(range(1, len(history["lr"]) + 1), history["lr"], color=color, label=f"""Learning Rate""")
+    # ax3.tick_params(axis='y', labelcolor=color)
+    ax3.set_yticks([])
+
+
+    # set the limits for y-axis scales
+    # ax1.set_ylim([0.1, max(history["losses"]) + 0.5])
+    ax2.set_ylim([min(history["accuracies"]) - 0.02, 1])
+
+    # add legend
+    lines, labels = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    lines3, labels3 = ax3.get_legend_handles_labels()
+    ax2.legend(lines + lines2 + lines3, labels + labels2 + labels3)
+
+    plt.title(f'Cost and Accuracy Plot (l2={hyper["l2"]})')
     plt.show()
 
 
@@ -245,7 +322,7 @@ def plot_weights(W, max_images=10):
         axs[i // 5, i % 5].axis('off')
         axs[i // 5, i % 5].set_title(f'Weight {i + 1}')
 
-        if i >= max_images-1:
+        if i >= max_images - 1:
             break
 
     plt.show()
@@ -278,10 +355,21 @@ def SGDStep(layers, lr):
     return layers
 
 
+def CyclicLearningRate(step, cycle, hyper):
+    min_peak = 2 * cycle * hyper["eta_step_size"]
+    max_peak = (2 * cycle + 1) * hyper["eta_step_size"]
+
+    if min_peak <= step <= max_peak:
+        return hyper["eta_min"] + (step - min_peak) / hyper["eta_step_size"] * (hyper["eta_max"] - hyper["eta_min"])
+    else:
+        return hyper["eta_max"] - (step - max_peak) / hyper["eta_step_size"] * (hyper["eta_max"] - hyper["eta_min"])
+
+
 def TrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val):
     epochs = hyper["epochs"]
     batchesPerEpoch = np.ceil(X_train.shape[1] / hyper["batchSize"]).astype(int)
     history = defaultdict(list)
+    update_step = 0
 
     for j in range(epochs):
         for i, X_batch, Y_batch, y_batch in YieldMiniBatch(X_train, Y_train, y_train, hyper["batchSize"]):
@@ -303,6 +391,9 @@ def TrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val):
 
             SGDStep(layers, hyper["lr"])
 
+            update_step += 1
+
+
         # Train data
         cost, loss = ComputeCost(X_train, Y_train, layers, hyper["l2"])
         acc = ComputeAccuracy(X_train, y_train, layers)
@@ -317,26 +408,86 @@ def TrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val):
         history["val_losses"].append(loss_val)
         history["val_accuracies"].append(acc_val)
 
-        print(f"""Epoch {j + 1}/{epochs}: Batch {i + 1}/{batchesPerEpoch}: Cost={cost:8.4f} ; Acc={acc:8.4f} ; Val Cost={cost_val:8.4f} ; Val Acc={acc_val:8.4f}""")
+        print(
+            f"""Epoch {j + 1}/{epochs}: Update Steps={update_step}: Cost={cost:8.4f} ; Acc={acc:8.4f} ; Val Cost={cost_val:8.4f} ; Val Acc={acc_val:8.4f}""")
 
     return layers, history
 
 
+def CyclicTrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val):
+    history = defaultdict(list)
+    update_step = 0
+
+    for cycle in range(hyper["cycles"]):
+        nextCycle = False
+        while not nextCycle:
+            for i, X_batch, Y_batch, y_batch in YieldMiniBatch(X_train, Y_train, y_train, hyper["batchSize"]):
+                pred = ForwardPass(X_batch, layers, cache=True)
+
+                ComputeGradients(X_batch, Y_batch, layers, hyper["l2"])
+
+                update_step += 1
+                lr = CyclicLearningRate(update_step, cycle, hyper)
+                SGDStep(layers, lr)
+
+                if update_step % (2 * hyper["eta_step_size"]) == 0:
+                    nextCycle = True
+                    break
+
+                if update_step % hyper["summary_step_size"] == 0:
+                    history["lr"].append(lr)
+
+                    # Train data
+                    cost, loss = ComputeCost(X_train, Y_train, layers, hyper["l2"])
+                    acc = ComputeAccuracy(X_train, y_train, layers)
+                    history["costs"].append(cost)
+                    history["losses"].append(loss)
+                    history["accuracies"].append(acc)
+
+                    # Val data
+                    cost_val, loss_val = ComputeCost(X_val, Y_val, layers, hyper["l2"])
+                    acc_val = ComputeAccuracy(X_val, y_val, layers)
+                    history["val_costs"].append(cost_val)
+                    history["val_losses"].append(loss_val)
+                    history["val_accuracies"].append(acc_val)
+
+                    print(f"""Epoch {cycle + 1}/{hyper["cycles"]}: Update Steps={update_step}: Cost={cost:8.4f} ; Acc={acc:8.4f} ; Val Cost={cost_val:8.4f} ; Val Acc={acc_val:8.4f}""")
+
+    return layers, history
+
+
+def param_search(hyper):
+    l2s = []
+    for l2 in np.linspace(hyper["search_l2_min"], hyper["search_l2_max"], hyper["search_steps"]):
+        layers = InitializeLayers(hidden_nodes)
+        hyper["l2"] = l2
+        layers, history = CyclicTrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val)
+        l2s.append((l2, history["val_accuracies"][-1]))
+
+    l2s.sort(key=lambda x: x[1], reverse=True)
+
+    for (l2, acc) in l2s:
+        print(f"{l2:.8f}: {acc}")
+
+    hyper["l2"] = l2s[0][0]
+    return hyper, l2s
+
+
 D = 3072  # dimensionality
-N = 10000  # samples
 K = 10  # classes
 hidden_nodes = [D, 50, K]
 
-X_train, Y_train, y_train = load_batch("data_batch_1")
+X_train, Y_train, y_train = load_all_batches()
 # helper.montage(X_train)
 
-X_val, Y_val, y_val = load_batch("data_batch_2")
+X_train, Y_train, y_train, X_val, Y_val, y_val = train_test_split(X_train, Y_train, y_train, 1000)
 
 X_test, Y_test, y_test = load_batch("test_batch")
 
+N = X_train.shape[1]  # samples
 assert X_train.shape == (D, N)
 assert Y_train.shape == (K, N)
-assert y_test.shape == (N,)
+assert y_train.shape == (N,)
 
 Xmean = X_train.mean(axis=1).reshape(-1, 1)
 Xstd = X_train.std(axis=1).reshape(-1, 1)
@@ -348,24 +499,41 @@ X_train = normalize(X_train, Xmean, Xstd)
 X_val = normalize(X_val, Xmean, Xstd)
 X_test = normalize(X_test, Xmean, Xstd)
 
-layers = InitializeLayers(hidden_nodes)
 
 hyper = {
-    "epochs": 40,
+    # "epochs": 40,
     "batchSize": 100,
-    "l2": 0.1,
-    "lr": 0.001,
+    # "l2": 0.00005560,
+    "l2": 0.01,
+    # "lr": 0.003,
+    "cycles": 1,
+    "eta_min": 1e-5,
+    "eta_max": 1e-1,
+    "eta_step_size": 500,  # n_s = 2 floor(n / n batch)
+    "search_l2_min": 1e-7,
+    "search_l2_max": 1e-4,
+    "search_steps": 10,
+    "summary_step_size": 100,
 }
 
 
-layers, history = TrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val)
+# hyper, search_results = param_search(hyper)
 
-plot_cost_and_accuracy(history)
+layers = InitializeLayers(hidden_nodes)
+layers, history = CyclicTrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val)
+
+# plot cyclic lr
+# plt.plot(range(len(history["lr"])), history["lr"])
+# # plt.yscale("symlog")
+# plt.show()
+
+plot_cyclic_lr_and_cost_and_accuracy(history)
+# plot_cost_and_accuracy(history)
 
 # Test data
 acc_test = ComputeAccuracy(X_test, y_test, layers)
 
-plot_weights(layers[0]["W"])
+# plot_weights(layers[0]["W"])
 # plot_weights(layers[1]["W"])
 
 
