@@ -70,22 +70,22 @@ def normalize(X: np.ndarray, mean: np.ndarray, std: np.ndarray):
 
 def EvaluateCLF(X: np.ndarray, W: np.ndarray, b: np.ndarray) -> np.ndarray:
     s = W @ X + b
-    # P = sigmoid(s)
-    P = softmax(s)
+    P = sigmoid(s)
+    # P = softmax(s)
     assert P.shape == (W.shape[0], X.shape[1])
     return P
 
 
 def ComputeCost(X: np.ndarray, Y: np.ndarray, W: np.ndarray, b: np.ndarray, lmbda: float) -> (float, float):
     P = EvaluateCLF(X, W, b)
-    N = P.shape[1]
-    ce_loss = -np.sum(Y * np.log(P)) / N
-    cost = ce_loss + 2 * lmbda * np.sum(W)
-    return cost, ce_loss
+    # N = P.shape[1]
+    # ce_loss = -np.sum(Y * np.log(P)) / N
+    # cost = ce_loss + 2 * lmbda * np.sum(W)
+    # return cost, ce_loss
 
-    # m_bce_loss = -np.mean(Y * np.log(P) + (1 - Y) * np.log(1 - P))
-    # cost = m_bce_loss + 2 * lmbda * np.sum(W)
-    # return cost, m_bce_loss
+    m_bce_loss = -np.mean(Y * np.log(P) + (1 - Y) * np.log(1 - P))
+    cost = m_bce_loss + 2 * lmbda * np.sum(W)
+    return cost, m_bce_loss
 
 
 def ComputeAccuracy(X: np.ndarray, y: np.ndarray, W: np.ndarray, b: np.ndarray) -> float:
@@ -340,11 +340,8 @@ def plot_probability_histogram(X, y_true, Weights, bias):
     P_test = EvaluateCLF(X, Weights, bias)
     y_pred = np.argmax(P_test, axis=0)
 
-    # correct = y_pred == y_true
-    # incorrect = y_pred != y_true
-
-    probs_correct = P_test[:, y_pred == y_true]
-    probs_incorrect = P_test[:, y_pred != y_true]
+    probs_correct = P_test[y_true[y_true == y_pred], y_pred == y_true]
+    probs_incorrect = P_test[y_true[y_true != y_pred], y_pred != y_true]
 
     # create histogram plots
     plt.hist(probs_correct, bins=20, alpha=0.5, label='Correctly classified')
