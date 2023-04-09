@@ -15,6 +15,11 @@ def softmax(x: np.ndarray) -> np.ndarray:
     return exps / np.sum(exps, axis=0)
 
 
+def sigmoid(x, d=False):
+    if not d:
+        return 1 / (1 + np.exp(-x))
+
+
 def one_hot_encode(values: np.ndarray) -> np.ndarray:
     n_values = len(values)
     one_hot_encoded = np.zeros((n_values, 10))
@@ -65,17 +70,22 @@ def normalize(X: np.ndarray, mean: np.ndarray, std: np.ndarray):
 
 def EvaluateCLF(X: np.ndarray, W: np.ndarray, b: np.ndarray) -> np.ndarray:
     s = W @ X + b
+    # P = sigmoid(s)
     P = softmax(s)
     assert P.shape == (W.shape[0], X.shape[1])
     return P
 
 
-def ComputeCost(X: np.ndarray, Y: np.ndarray, W: np.ndarray, b: np.ndarray, lmbda: float) -> float:
+def ComputeCost(X: np.ndarray, Y: np.ndarray, W: np.ndarray, b: np.ndarray, lmbda: float) -> (float, float):
     P = EvaluateCLF(X, W, b)
     N = P.shape[1]
     ce_loss = -np.sum(Y * np.log(P)) / N
     cost = ce_loss + 2 * lmbda * np.sum(W)
     return cost, ce_loss
+
+    # m_bce_loss = -np.mean(Y * np.log(P) + (1 - Y) * np.log(1 - P))
+    # cost = m_bce_loss + 2 * lmbda * np.sum(W)
+    # return cost, m_bce_loss
 
 
 def ComputeAccuracy(X: np.ndarray, y: np.ndarray, W: np.ndarray, b: np.ndarray) -> float:
@@ -148,8 +158,11 @@ def ComputeGradsNumSlow(X, Y, P, W, b, lamda, h=1e-6):
 def ComputeGradients(X: np.ndarray, Y: np.ndarray, P: np.ndarray, W: np.ndarray, b: np.ndarray, lmbda: float) -> (
         np.ndarray, np.ndarray):
     N = X.shape[1]
+    # K = Y.shape[0]
     # error gradient of the cross-entropy loss function for the softmax function
-    Gb = P - Y
+    Gb = (P - Y)  # / K
+    # ignoring "/ K" factor here allows to ignore scaling of learning rate
+    # => essentially the same gradient computation
 
     # multiply and sum intermediate error with previous layer (here input)
     grad_W = (1 / N) * Gb @ X.T
@@ -317,64 +330,29 @@ def plot_weights(W):
     plt.show()
 
 
-def multiclass_bce_loss(y_true, y_pred):
-    # avoid divide by zero error by clipping predicted probabilities
-    eps = np.finfo(np.float32).eps
-    y_pred = np.clip(y_pred, eps, 1 - eps)
-
-    # compute the loss for each class
-    loss = -1 / len(y_true) * np.sum((y_true * np.log(y_pred)) + ((1 - y_true) * np.log(1 - y_pred)), axis=1)
-
-    # return the average loss over all classes
-    return np.mean(loss)
-
-
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
-
-
-D = 3072  # dimensionality
-K = 10  # classes
-
-X, Y, y = load_all_batches()
-
-X_train, Y_train, y_train, X_val, Y_val, y_val = train_test_split(X, Y, y, 1000)
-
-X_test, Y_test, y_test = load_batch("test_batch")
-
-# montage(X.T)
-
-N = X_train.shape[1]  # samples
-assert X_train.shape == (D, N)
-assert Y_train.shape == (K, N)
-assert y_train.shape == (N,)
-
-Xmean = X_train.mean(axis=1).reshape(-1, 1)
-Xstd = X_train.std(axis=1).reshape(-1, 1)
-
-assert Xmean.shape == (D, 1)
-assert Xstd.shape == (D, 1)
-
-X_train = normalize(X_train, Xmean, Xstd)
-X_val = normalize(X_val, Xmean, Xstd)
-X_test = normalize(X_test, Xmean, Xstd)
-
-
 def InitializeLayer():
     Weights = np.random.normal(0, 0.01, (K, D))
     bias = np.random.normal(0, 0.01, (K, 1))
     return Weights, bias
 
 
-params = {
-    "epochs": 40,
-    "batchSize": 500,
-    "l2": 0.00000001,
-    "lr": 0.00398107,
-    "search_min": -8,
-    "search_max": -1,
-    "search_steps": 16,
-}
+def plot_probability_histogram(X, y_true, Weights, bias):
+    P_test = EvaluateCLF(X, Weights, bias)
+    y_pred = np.argmax(P_test, axis=0)
+
+    # correct = y_pred == y_true
+    # incorrect = y_pred != y_true
+
+    probs_correct = P_test[:, y_pred == y_true]
+    probs_incorrect = P_test[:, y_pred != y_true]
+
+    # create histogram plots
+    plt.hist(probs_correct, bins=20, alpha=0.5, label='Correctly classified')
+    plt.hist(probs_incorrect, bins=20, alpha=0.5, label='Incorrectly classified')
+    plt.xlabel('Probability of true class')
+    plt.ylabel('Count')
+    plt.legend()
+    plt.show()
 
 
 def TrainCLF(Weights, bias, params, X_train, Y_train, y_train, X_val, Y_val, y_val):
@@ -436,6 +414,44 @@ def hypersearch(params, name, X_train, Y_train, y_train, X_val, Y_val, y_val):
     return params, result
 
 
+D = 3072  # dimensionality
+K = 10  # classes
+
+X, Y, y = load_all_batches()
+
+X_train, Y_train, y_train, X_val, Y_val, y_val = train_test_split(X, Y, y, 1000)
+
+X_test, Y_test, y_test = load_batch("test_batch")
+
+# montage(X.T)
+
+N = X_train.shape[1]  # samples
+assert X_train.shape == (D, N)
+assert Y_train.shape == (K, N)
+assert y_train.shape == (N,)
+
+Xmean = X_train.mean(axis=1).reshape(-1, 1)
+Xstd = X_train.std(axis=1).reshape(-1, 1)
+
+assert Xmean.shape == (D, 1)
+assert Xstd.shape == (D, 1)
+
+X_train = normalize(X_train, Xmean, Xstd)
+X_val = normalize(X_val, Xmean, Xstd)
+X_test = normalize(X_test, Xmean, Xstd)
+
+
+params = {
+    "epochs": 40,
+    "batchSize": 500,
+    "l2": 0.00000001,
+    "lr": 0.00398107,
+    "search_min": -8,
+    "search_max": -1,
+    "search_steps": 16,
+}
+
+
 # params, l2s = hypersearch(params, "l2", X_train, Y_train, y_train, X_val, Y_val, y_val)
 
 # params, lrs = hypersearch(params, "lr", X_train, Y_train, y_train, X_val, Y_val, y_val)
@@ -449,6 +465,7 @@ Weights, bias = InitializeLayer()
 Weights, bias, history = TrainCLF(Weights, bias, params, X_train, Y_train, y_train, X_val, Y_val, y_val)
 
 plot_cost_and_accuracy(history)
+plot_probability_histogram(X_test, y_test, Weights, bias)
 
 # Test data
 acc_test = ComputeAccuracy(X_test, y_test, Weights, bias)
