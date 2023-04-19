@@ -235,8 +235,8 @@ bias = np.random.normal(0, 0.01, (K, 1))
 params = {
     "epochs": 40,
     "batchSize": 100,
-    "l2": 1,
-    "lr": .001,
+    "l2": 0,
+    "lr": .1,
 }
 
 
@@ -288,16 +288,18 @@ acc_test = ComputeAccuracy(X_test, y_test, Weights, bias)
 
 
 def plot_weights(W):
-    fig, axs = plt.subplots(2, 5, figsize=(10, 4))
+    # plot each class's weights as an image
+    fig, axs = plt.subplots(2, 5, figsize=(10, 5))
+    axs = axs.ravel()
 
     for i in range(len(W)):
-        im = np.reshape(W[i, :], (32, 32, 3))
+        im = np.reshape(W[i, :], (32, 32, 3), order="F")
         im = (im - np.min(im)) / (np.max(im) - np.min(im))
         im = np.transpose(im, (1, 0, 2))  # permute
 
-        axs[i // 5, i % 5].imshow(im)
-        axs[i // 5, i % 5].axis('off')
-        axs[i // 5, i % 5].set_title(f'Weight {i + 1}')
+        axs[i].imshow(im)
+        axs[i].axis('off')
+        axs[i].set_title(f'Weights {i + 1}')
 
     plt.show()
 

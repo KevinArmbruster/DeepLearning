@@ -298,7 +298,7 @@ def plot_cost_and_accuracy(history):
     plt.show()
 
 
-def plot_cyclic_lr_and_cost_and_accuracy(history):
+def plot_cyclic_lr_and_cost_and_accuracy(history, title):
     fig, ax1 = plt.subplots()
 
     # plot the cost
@@ -346,7 +346,7 @@ def plot_cyclic_lr_and_cost_and_accuracy(history):
     lines3, labels3 = ax3.get_legend_handles_labels()
     ax2.legend(lines + lines2 + lines3, labels + labels2 + labels3)
 
-    plt.title(f'Cost and Accuracy Plot (l2={hyper["l2"]})')
+    plt.title(title)
     plt.show()
 
 
@@ -368,13 +368,15 @@ def plot_weights(W, max_images=10):
     plt.show()
 
 
-def InitializeLayersRandom(hidden_nodes: list) -> list:
+def InitializeLayersRandom(hidden_nodes: list, sigma=None) -> list:
     layers = []
     for i in range(1, len(hidden_nodes)):
         fan_in = hidden_nodes[i - 1]
         fan_out = hidden_nodes[i]
 
-        W = np.random.normal(0, 1 / np.sqrt(fan_in), (fan_out, fan_in))
+        if sigma is None:
+            sigma = 1 / np.sqrt(fan_in)
+        W = np.random.normal(0, sigma, (fan_out, fan_in))
         b = np.zeros((fan_out, 1))
 
         gamma = np.ones((fan_out, 1))
@@ -584,13 +586,13 @@ X_test = normalize(X_test, Xmean, Xstd)
 hyper = {
     # "epochs": 40,
     "batchSize": 100,
-    # "l2": 0.00005560,
-    "l2": 0.005,
+    "l2": 0.00429193,
+    # "l2": 0.005,
     # "lr": 0.003,
     "cycles": 2,
     "eta_min": 1e-5,
     "eta_max": 1e-1,
-    "eta_step_size": 2250,  # n_s = 2 floor(n / n batch)
+    "eta_step_size": 2 * 45000 / 100,
     "search_l2_min": -8,
     "search_l2_max": -2,
     "search_steps": 50,
@@ -600,24 +602,24 @@ hyper = {
     # "hidden_nodes": [D, 50, 30, 20, 20, 10, 10, 10, 10, K],
 }
 
-hyper, search_results = param_search(hyper)
+# hyper, search_results = param_search(hyper)
 
-layers = InitializeLayersXavier(hyper["hidden_nodes"])
-layers, history = CyclicTrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val)
+for sig in [1e-1, 1e-3, 1e-4]:
+    hyper["batchNorm"] = True
+    # layers = InitializeLayersXavier(hyper["hidden_nodes"])
+    layers = InitializeLayersRandom(hyper["hidden_nodes"], sig)
+    layers, history = CyclicTrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val)
+    plot_cyclic_lr_and_cost_and_accuracy(history, f'Cost and Accuracy: (BN={hyper["batchNorm"]}, sigma={sig})')
+    acc_test = ComputeAccuracy(X_test, y_test, layers, hyper["batchNorm"])
+    print(f"""Sigma {sig}: BN: {hyper["batchNorm"]}: Final test acc {acc_test}""")
 
-# plot cyclic lr
-# plt.plot(range(len(history["lr"])), history["lr"])
-# # plt.yscale("symlog")
-# plt.show()
+    hyper["batchNorm"] = False
+    layers = InitializeLayersRandom(hyper["hidden_nodes"], sig)
+    layers, history = CyclicTrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val)
+    plot_cyclic_lr_and_cost_and_accuracy(history, f'Cost and Accuracy: (BN={hyper["batchNorm"]}, sigma={sig})')
+    acc_test = ComputeAccuracy(X_test, y_test, layers, hyper["batchNorm"])
+    print(f"""Sigma {sig}: BN: {hyper["batchNorm"]}: Final test acc {acc_test}""")
 
-plot_cyclic_lr_and_cost_and_accuracy(history)
-# plot_cost_and_accuracy(history)
-
-# Test data
-acc_test = ComputeAccuracy(X_test, y_test, layers, hyper["batchNorm"])
 
 # plot_weights(layers[0]["W"])
 # plot_weights(layers[1]["W"])
-
-
-print(f"Final test acc {acc_test}")
