@@ -62,9 +62,13 @@ def normalize(X: np.ndarray, mean: np.ndarray, std: np.ndarray):
     return X
 
 
-def ForwardPass(X: np.ndarray, layers: list, cache=False) -> np.ndarray:
+def ForwardPass(X: np.ndarray, layers: list, dropout_prob=None, cache=False) -> np.ndarray:
     s1 = layers[0]["W"] @ X + layers[0]["b"]
     h = relu(s1)
+
+    if dropout_prob:
+        d1 = np.random.binomial(1, 1 - dropout_prob, size=h.shape)
+        h = (h * d1) / (1 - dropout_prob)  # apply mask and scale by keep prob
 
     s2 = layers[1]["W"] @ h + layers[1]["b"]
     pred = softmax(s2)
@@ -75,6 +79,8 @@ def ForwardPass(X: np.ndarray, layers: list, cache=False) -> np.ndarray:
     if cache:
         layers[0]["activation"] = h
         layers[1]["activation"] = pred
+        if dropout_prob:
+            layers[0]["dropout_mask"] = d1
 
     return pred
 
@@ -178,14 +184,18 @@ def ComputeGradsNumGit(X, Y, layers, lmbda, h=1e-5):
     return grad_W2, grad_b2, grad_W1, grad_b1
 
 
-def ComputeGradients(X: np.ndarray, Y: np.ndarray, layers: list, lmbda: float):
+def ComputeGradients(X: np.ndarray, Y: np.ndarray, layers: list, lmbda: float, dropout_prob: float = None):
     error = layers[1]["activation"] - Y
 
     N = layers[1]["activation"].shape[1]
     layers[1]["dW"] = (1 / N) * error @ layers[0]["activation"].T + 2 * lmbda * layers[1]["W"]
     layers[1]["db"] = np.mean(error, axis=1, keepdims=True)
 
-    error = layers[1]["W"].T @ error
+    error = layers[1]["W"].T @ error    # dAct0
+
+    if dropout_prob:
+        error = (error * layers[0]["dropout_mask"]) / (1 - dropout_prob)   # apply mask and scale by keep prob
+
     dHidden = error * relu(layers[0]["activation"], d=True)
 
     layers[0]["dW"] = (1 / N) * dHidden @ X.T + 2 * lmbda * layers[0]["W"]
@@ -365,6 +375,51 @@ def CyclicLearningRate(step, cycle, hyper):
         return hyper["eta_max"] - (step - max_peak) / hyper["eta_step_size"] * (hyper["eta_max"] - hyper["eta_min"])
 
 
+def AugmentImages(X: np.ndarray, augmentChance=.5, flipVsRotateChance=.5) -> np.ndarray:
+    augmented = []
+    # image = X[:, i].T.reshape(32, 32, 3, order="F")
+    images = X.T.reshape(X.shape[1], 32, 32, 3, order="F")
+
+    for i in range(len(images)):
+        # ShowImage(images[i])
+
+        if np.random.random() > augmentChance:
+
+            if np.random.random() > flipVsRotateChance:
+
+                if np.random.random() > .5:
+                    # horizontally
+                    aug = np.flipud(images[i])
+                    # ShowImage(aug)
+                    augmented.append(aug.flatten(order='F'))
+                else:
+                    # vertically
+                    # aug = cv2.flip(images[i], 0)
+                    aug = np.fliplr(images[i])
+                    # ShowImage(aug)
+                    augmented.append(aug.flatten(order='F'))
+
+            else:
+
+                if np.random.random() > .5:
+                    # rotate clockwise
+                    aug = np.rot90(images[i], k=1)
+                    # ShowImage(aug)
+                    augmented.append(aug.flatten(order='F'))
+                else:
+                    # rotate counter-clockwise
+                    aug = np.rot90(images[i], k=-1)
+                    # ShowImage(aug)
+                    augmented.append(aug.flatten(order='F'))
+
+        else:
+            augmented.append(images[i].flatten(order='F'))
+
+    augmented = np.array(augmented).T
+    assert augmented.shape == X.shape
+    return augmented
+
+
 def TrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val):
     epochs = hyper["epochs"]
     batchesPerEpoch = np.ceil(X_train.shape[1] / hyper["batchSize"]).astype(int)
@@ -376,10 +431,11 @@ def TrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val):
             # dim = 1000
             # X_batch = X_batch[:dim,]
             # layers = InitializeLayers([dim, 50, 10])
+            X_batch = AugmentImages(X_batch)
 
             pred = ForwardPass(X_batch, layers, cache=True)
 
-            ComputeGradients(X_batch, Y_batch, layers, hyper["l2"])
+            ComputeGradients(X_batch, Y_batch, layers, hyper["l2"], hyper["dropout_prob"])
 
             # grad_W, grad_b = ComputeGradsNum(X_batch, Y_batch, layers, hyper["l2"])
             #
@@ -422,9 +478,11 @@ def CyclicTrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val
         nextCycle = False
         while not nextCycle:
             for i, X_batch, Y_batch, y_batch in YieldMiniBatch(X_train, Y_train, y_train, hyper["batchSize"]):
-                pred = ForwardPass(X_batch, layers, cache=True)
+                X_batch = AugmentImages(X_batch)
 
-                ComputeGradients(X_batch, Y_batch, layers, hyper["l2"])
+                pred = ForwardPass(X_batch, layers, hyper["dropout_prob"], cache=True)
+
+                ComputeGradients(X_batch, Y_batch, layers, hyper["l2"], hyper["dropout_prob"])
 
                 update_step += 1
                 lr = CyclicLearningRate(update_step, cycle, hyper)
@@ -458,7 +516,8 @@ def CyclicTrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val
 
 def param_search(hyper):
     l2s = []
-    for l2 in np.linspace(hyper["search_l2_min"], hyper["search_l2_max"], hyper["search_steps"]):
+    for l2 in np.logspace(hyper["search_l2_min"], hyper["search_l2_max"], hyper["search_steps"]):
+        print(f"L2 {l2}")
         layers = InitializeLayers(hidden_nodes)
         hyper["l2"] = l2
         layers, history = CyclicTrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val)
@@ -503,16 +562,18 @@ hyper = {
     # "epochs": 40,
     "batchSize": 100,
     # "l2": 0.00005560,
-    "l2": 0.01,
+    "l2": 0.00005560,
     # "lr": 0.003,
-    "cycles": 1,
+    "cycles": 3,
     "eta_min": 1e-5,
     "eta_max": 1e-1,
     "eta_step_size": 500,  # n_s = 2 floor(n / n batch)
-    "search_l2_min": 1e-7,
-    "search_l2_max": 1e-4,
-    "search_steps": 10,
+    "search_l2_min": -8,
+    "search_l2_max": -2,
+    "search_steps": 12,
     "summary_step_size": 100,
+    "dropout_prob": 0.5,
+    "momentum": 0.9,
 }
 
 
