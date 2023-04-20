@@ -509,15 +509,15 @@ def CyclicTrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val
                     history["val_losses"].append(loss_val)
                     history["val_accuracies"].append(acc_val)
 
-                    print(f"""Epoch {cycle + 1}/{hyper["cycles"]}: Update Steps={update_step}: Cost={cost:8.4f} ; Acc={acc:8.4f} ; Val Cost={cost_val:8.4f} ; Val Acc={acc_val:8.4f}""")
+                    print(f"""Cycle {cycle + 1}/{hyper["cycles"]}: Update Steps={update_step}: Cost={cost:8.4f} ; Acc={acc:8.4f} ; Val Cost={cost_val:8.4f} ; Val Acc={acc_val:8.4f}""")
 
     return layers, history
 
 
 def param_search(hyper):
     l2s = []
-    for l2 in np.logspace(hyper["search_l2_min"], hyper["search_l2_max"], hyper["search_steps"]):
-        print(f"L2 {l2}")
+    for i, l2 in enumerate(np.logspace(hyper["search_l2_min"], hyper["search_l2_max"], hyper["search_steps"])):
+        print(f"{i}: L2 {l2}")
         layers = InitializeLayers(hidden_nodes)
         hyper["l2"] = l2
         layers, history = CyclicTrainCLF(layers, hyper, X_train, Y_train, y_train, X_val, Y_val, y_val)
@@ -534,7 +534,7 @@ def param_search(hyper):
 
 D = 3072  # dimensionality
 K = 10  # classes
-hidden_nodes = [D, 50, K]
+hidden_nodes = [D, 5000, K]
 
 X, Y, y = load_all_batches()
 
@@ -562,9 +562,9 @@ hyper = {
     # "epochs": 40,
     "batchSize": 100,
     # "l2": 0.00005560,
-    "l2": 0.00005560,
+    "l2": 0.00000004,
     # "lr": 0.003,
-    "cycles": 3,
+    "cycles": 6,
     "eta_min": 1e-5,
     "eta_max": 1e-1,
     "eta_step_size": 500,  # n_s = 2 floor(n / n batch)
@@ -573,7 +573,7 @@ hyper = {
     "search_steps": 12,
     "summary_step_size": 100,
     "dropout_prob": 0.5,
-    "momentum": 0.9,
+    # "momentum": 0.9,
 }
 
 
