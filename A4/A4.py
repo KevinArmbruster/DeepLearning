@@ -157,7 +157,7 @@ class RNN:
         h = h0
 
         for i in range(seqLength):
-            p, _, _ = self.ForwardPassSingle(x, h)
+            p, h, _ = self.ForwardPassSingle(x, h)
             # idx = self.Sample(p)
             idx = np.random.choice(self.chars, p=np.squeeze(p))
             prediction.append(index_to_char[idx])
